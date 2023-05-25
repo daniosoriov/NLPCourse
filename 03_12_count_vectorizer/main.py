@@ -7,6 +7,7 @@ Once we have the headers, we can create each vector per document based on the fr
 """
 import os
 import requests
+import csv
 
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.neighbors import KNeighborsClassifier
@@ -26,8 +27,9 @@ from typing import List, Tuple, Dict
 
 import scipy
 
-TRAINING_FOLDER = 'training'
-TESTING_FOLDER = 'testing'
+DATA_TRAINING_FILE = 'data/lyrics_dataset.csv'
+DATA_TEST_FILE = 'data/lyrics_dataset_test.csv'
+DATA_TEST_CHATGPT_FILE = 'data/lyrics_dataset_test_chatgpt.csv'
 MODEL_FOLDER = 'model'
 CLASSIFIER_FILE = os.path.join(MODEL_FOLDER, 'classifier.joblib')
 VECTORIZER_FILE = os.path.join(MODEL_FOLDER, 'vectorizer.joblib')
@@ -161,23 +163,21 @@ def lemma_tokenizer_regexp(text: str) -> List[str]:
     return [lemmatizer.lemmatize(word, pos=get_wordnet_pos(tag)) for word, tag in nltk.pos_tag(tokens)]
 
 
-def get_documents() -> Tuple[List[str], List[str]]:
+def get_documents(filepath) -> Tuple[List[str], List[str], List[str]]:
     """
-    Gets the documents from the training folder to train and test the model
+    Gets the documents from the dataset to train and test the model
     :return: A tuple containing two lists, the list of documents and the list of labels
     """
-    documents, labels = [], []
-    files = os.listdir(TRAINING_FOLDER)
-    for filename in files:
-        if filename == '.DS_Store':
-            continue
-        document = os.path.join(TRAINING_FOLDER, filename)
-        with open(document) as file:
-            lines = file.readlines()
-            lines = ' '.join(line.strip() for line in lines).lower()
-        documents.append(lines)
-        labels.append(filename.split('_')[0])
-    return documents, labels
+    documents, labels, titles = [], [], []
+    with open(filepath, 'r') as csvfile:
+        data = csv.reader(csvfile)
+        # Ignore the header
+        next(data)
+        for row in data:
+            documents.append(row[2].lower())
+            labels.append(row[0])
+            titles.append(row[1])
+    return documents, labels, titles
 
 
 def get_stopwords() -> List[str]:
@@ -232,7 +232,7 @@ def train_scipy(best_values: Dict = None):
     nltk.download('averaged_perceptron_tagger')
     nltk.download('stopwords')
 
-    documents, labels = get_documents()
+    documents, labels, _ = get_documents(DATA_TRAINING_FILE)
     english_stop_words = get_stopwords()
     best = BestValues(**best_values)
 
@@ -318,32 +318,26 @@ def train_model(vectorizer, X_train, X_test, y_train, y_test):
     return best
 
 
-def test_scipy(folder_path):
+def test_scipy(filepath):
     print()
     print('Testing the model...')
     loaded_classifier = load(CLASSIFIER_FILE)
     loaded_vectorizer = load(VECTORIZER_FILE)
 
     correct = 0
-    items = os.listdir(folder_path)
-    total = len(items)
-    items = sorted(items)
-    for item in items:
-        if item == '.DS_Store':
-            continue
-        with open(os.path.join(TESTING_FOLDER, item)) as file:
-            lines = file.readlines()
-            lines = ' '.join(line.strip() for line in lines).lower()
-        lines = ' '.join(lemma_tokenizer_regexp(lines))
+    documents, labels, titles = get_documents(filepath)
+    total = len(documents)
+    for item, doc in enumerate(documents):
+        lines = ' '.join(lemma_tokenizer_regexp(doc))
         new_document = [lines]
         new_X_test = loaded_vectorizer.transform(new_document)
         predicted_label = loaded_classifier.predict(new_X_test)
-        real_artist = item.split('_')[0]
+        real_artist = labels[item]
         if real_artist == predicted_label[0]:
-            print(f'Correct! {item} is {predicted_label[0]}')
+            print(f'Correct! {titles[item]} by {real_artist} is {predicted_label[0]}')
             correct += 1
         else:
-            print(f'Wrong! {item} is not {predicted_label[0]}')
+            print(f'Wrong! {titles[item]} by {real_artist} is not {predicted_label[0]}')
 
     print(f'{correct}/{total} - {correct / total:.2%} correct answers')
 
@@ -388,7 +382,8 @@ def main():
             }}
         best_values = best_models['RandomForestClassifier']
         train_scipy(best_values=best_values)
-    test_scipy(TESTING_FOLDER)
+    test_scipy(DATA_TEST_FILE)
+    test_scipy(DATA_TEST_CHATGPT_FILE)
 
 
 if __name__ == '__main__':

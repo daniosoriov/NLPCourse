@@ -115,27 +115,25 @@ def create_transition_prob(documents: List[List[str]]) -> \
     for doc in documents:
         doc.append('<END>')
 
-    # Count the frequency of transitions of order one and initialize second order transitions
+    # Count the frequency of transitions of order one and two
     for doc in documents:
-        previous_token = ''
+        # Initialize token trackers
+        previous_token, before_previous_token = '', ''
+
         for num, token in enumerate(doc):
             if num > 0:
+                # Count transitions of order one and initialize second order transitions
                 a1[previous_token] = a1.get(previous_token, {})
                 a2[previous_token] = a2.get(previous_token, {})
                 a1[previous_token][token] = a1[previous_token].get(token, 0) + 1
-                a2[previous_token][token] = {}
-            previous_token = token
+                a2[previous_token][token] = a2[previous_token].get(token, {})
 
-    # Count the frequency of transitions of order two
-    for doc in documents:
-        # Skip documents with less than 3 tokens
-        if len(doc) < 3:
-            continue
-        previous_token, before_previous_token = '', ''
-        for num, token in enumerate(doc):
             if num > 1:
+                # Count transitions of order two
                 current_count = a2[before_previous_token][previous_token].get(token, 0)
                 a2[before_previous_token][previous_token][token] = current_count + 1
+
+            # Update token trackers
             before_previous_token, previous_token = previous_token, token
 
     # Calculate transition probabilities for order one
